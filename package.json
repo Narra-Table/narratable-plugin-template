@@ -3,13 +3,14 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "check": "tsc --noEmit",
-    "build": "node ./build.mjs"
+    "check": "node ./build.mjs --assets && tsc --noEmit",
+    "build": "node ./build.mjs",
+    "release": "node ./build.mjs --release"
   },
   "narratablePlugin": {
-    "entry": "src/index.ts",
+    "entry": "src/main.ts",
     "outfile": "dist/plugin.js",
-    "minify": false
+    "minify": true
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
