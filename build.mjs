@@ -6,10 +6,15 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import * as esbuild from "esbuild";
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+const buildDir = path.dirname(fileURLToPath(import.meta.url));
+const args = process.argv.slice(2);
+const rootFlag = args.indexOf("--root");
+if (rootFlag >= 0 && !args[rootFlag + 1]) {
+  throw new Error("--root 需要一个目录");
+}
+const root = rootFlag >= 0 ? path.resolve(buildDir, args[rootFlag + 1]) : buildDir;
 const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const config = pkg.narratablePlugin ?? {};
-const args = process.argv.slice(2);
 
 const allowedAssetExt = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "json", "ogg", "mp3", "wav"]);
 const imageExt = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
@@ -24,8 +29,9 @@ const allowedMetaKeys = new Set([
   "version",
   "description",
   "author",
+  "rule",
+  "pluginRule",
   "characterDataType",
-  "configSchema",
   "depends",
   "windows",
 ]);
@@ -119,32 +125,120 @@ function readPluginMeta() {
     }
   }
 
-  let configSchema;
   if (meta.configSchema !== undefined) {
-    if (meta.configSchema === null || typeof meta.configSchema !== "object" || Array.isArray(meta.configSchema)) {
-      throw new Error("configSchema 必须是 JSON 对象");
-    }
-    configSchema = meta.configSchema;
+    throw new Error("configSchema 已废弃；配置项改在脚本顶层用 narratable.config.* 登记");
   }
 
+  const rule = readRule(meta.rule);
+  const pluginRule = readPluginRule(meta.pluginRule);
+  if (rule && pluginRule) {
+    throw new Error("rule 与 pluginRule 不能同时声明");
+  }
   const depends = readDepends(meta.depends);
+  if (pluginRule) {
+    const segment = pluginRule.rule.split("/").pop();
+    const covered = depends.some((item) => item.id === pluginRule.rule || item.id === segment);
+    if (!covered) {
+      throw new Error(`pluginRule 要求在 depends 中声明 ${pluginRule.rule}`);
+    }
+  }
   const windows = readWindows(meta.windows);
 
-  return { name, displayName, version, description, author, characterDataType, configSchema, depends, windows };
+  return { name, displayName, version, description, author, characterDataType, rule, pluginRule, depends, windows };
+}
+
+function readRule(value) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("rule 必须是对象");
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== "id" && key !== "name") {
+      throw new Error(`rule 含有未知字段 ${key}`);
+    }
+  }
+  if (typeof value.id !== "string" || !isRuleID(value.id)) {
+    throw new Error("rule.id 必须是 命名空间/规则名");
+  }
+  const name = requiredString(value, "name");
+  if (chars(name) > 128) {
+    throw new Error("rule.name 不能超过 128 个字符");
+  }
+  return { id: value.id, name };
+}
+
+function readPluginRule(value) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("pluginRule 必须是对象");
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== "rule" && key !== "constraint" && key !== "namespace") {
+      throw new Error(`pluginRule 含有未知字段 ${key}`);
+    }
+  }
+  if (typeof value.rule !== "string" || !isRuleID(value.rule)) {
+    throw new Error("pluginRule.rule 必须是 命名空间/规则名");
+  }
+  if (typeof value.constraint !== "string" || value.constraint.trim() === "") {
+    throw new Error("pluginRule.constraint 必须是非空字符串");
+  }
+  if (value.constraint.includes("||")) {
+    throw new Error("pluginRule.constraint 不支持 ||");
+  }
+  let namespace = value.rule.split("/").pop();
+  if (value.namespace !== undefined) {
+    if (typeof value.namespace !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.namespace)) {
+      throw new Error("pluginRule.namespace 必须是小写字母、数字和连字符");
+    }
+    namespace = value.namespace;
+  }
+  return { rule: value.rule, constraint: value.constraint.trim(), namespace };
+}
+
+function isRuleID(value) {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
 function readDepends(value) {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
-    throw new Error("depends 必须是字符串数组");
+    throw new Error("depends 必须是对象数组");
   }
   return value.map((item, index) => {
-    if (typeof item !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item)) {
-      throw new Error(`depends[${index}] 必须是插件名`);
+    if (typeof item === "string") {
+      // Legacy string form. The emitted manifest always uses objects.
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item)) {
+        throw new Error(`depends[${index}] 必须是插件名`);
+      }
+      return { id: item };
     }
-    return item;
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`depends[${index}] 必须是对象`);
+    }
+    for (const key of Object.keys(item)) {
+      if (key !== "id" && key !== "constraint") {
+        throw new Error(`depends[${index}] 含有未知字段 ${key}`);
+      }
+    }
+    if (typeof item.id !== "string" || (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.id) && !isRuleID(item.id))) {
+      throw new Error(`depends[${index}].id 必须是插件名或规则 ID`);
+    }
+    const dep = { id: item.id };
+    if (item.constraint !== undefined) {
+      if (typeof item.constraint !== "string" || item.constraint.trim() === "" || item.constraint.includes("||")) {
+        throw new Error(`depends[${index}].constraint 无效`);
+      }
+      dep.constraint = item.constraint.trim();
+    }
+    return dep;
   });
 }
+
+const windowKeys = new Set([
+  "id", "title", "icon", "visibility", "defaultWidth", "defaultDisplay", "chrome",
+  "floating", "modal", "singleton", "embeddable", "launcher", "resizable", "dismissible",
+]);
 
 function readWindows(value) {
   if (value === undefined) return [];
@@ -160,7 +254,7 @@ function readWindows(value) {
       throw new Error(`windows[${index}] 必须是对象`);
     }
     for (const key of Object.keys(item)) {
-      if (key !== "id" && key !== "title" && key !== "visibility") {
+      if (!windowKeys.has(key)) {
         throw new Error(`windows[${index}] 含有未知字段 ${key}`);
       }
     }
@@ -176,14 +270,46 @@ function readWindows(value) {
     if (typeof title !== "string" || title.trim() === "" || chars(title.trim()) > 128) {
       throw new Error(`windows[${index}].title 必须是不超过 128 个字符的非空字符串`);
     }
-    let visibility;
+    const window = { id, title: title.trim() };
+    if (item.icon !== undefined) {
+      if (typeof item.icon !== "string" || !item.icon.startsWith("assets/") || !imageExt.has(path.posix.extname(item.icon).slice(1).toLowerCase())) {
+        throw new Error(`windows[${index}].icon 必须是 assets/ 下允许的图片`);
+      }
+      window.icon = item.icon;
+    }
     if (item.visibility !== undefined) {
       if (item.visibility !== "all" && item.visibility !== "gm_only") {
         throw new Error(`windows[${index}].visibility 只能是 all 或 gm_only`);
       }
-      visibility = item.visibility;
+      window.visibility = item.visibility;
     }
-    return { id, title: title.trim(), visibility };
+    if (item.defaultWidth !== undefined) {
+      if (typeof item.defaultWidth !== "number" || item.defaultWidth <= 0 || item.defaultWidth > 1) {
+        throw new Error(`windows[${index}].defaultWidth 必须在 0 到 1 之间`);
+      }
+      window.defaultWidth = item.defaultWidth;
+    }
+    if (item.defaultDisplay !== undefined) {
+      if (!["normal", "maximized", "minimized", "floating"].includes(item.defaultDisplay)) {
+        throw new Error(`windows[${index}].defaultDisplay 无效`);
+      }
+      window.defaultDisplay = item.defaultDisplay;
+    }
+    if (item.chrome !== undefined) {
+      if (item.chrome !== "full" && item.chrome !== "titlebar-hidden") {
+        throw new Error(`windows[${index}].chrome 只能是 full 或 titlebar-hidden`);
+      }
+      window.chrome = item.chrome;
+    }
+    for (const key of ["floating", "modal", "singleton", "embeddable", "launcher", "resizable", "dismissible"]) {
+      if (item[key] !== undefined) {
+        if (typeof item[key] !== "boolean") {
+          throw new Error(`windows[${index}].${key} 必须是布尔值`);
+        }
+        window[key] = item[key];
+      }
+    }
+    return window;
   });
 }
 
@@ -334,12 +460,15 @@ function buildManifest(meta, entry, files) {
     author: meta.author,
   };
   if (meta.characterDataType) manifest.characterDataType = meta.characterDataType;
+  if (meta.rule) manifest.rule = meta.rule;
+  if (meta.pluginRule) manifest.pluginRule = meta.pluginRule;
   if (meta.depends.length > 0) manifest.depends = meta.depends;
-  if (meta.configSchema) manifest.configSchema = meta.configSchema;
   if (meta.windows.length > 0) {
     manifest.windows = meta.windows.map((item) => {
       const window = { id: item.id, title: item.title, entry: `windows/${item.id}.html` };
-      if (item.visibility) window.visibility = item.visibility;
+      for (const key of ["icon", "visibility", "defaultWidth", "defaultDisplay", "chrome", "floating", "modal", "singleton", "embeddable", "launcher", "resizable", "dismissible"]) {
+        if (item[key] !== undefined) window[key] = item[key];
+      }
       return window;
     });
   }
@@ -543,13 +672,13 @@ if (!hasCli && meta.windows.length === 0) {
   throw new Error("插件至少要有 src/main.ts 或一个窗口");
 }
 const assets = (await collectAssets()).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-const assetModule = writeAssetModule(meta, assets);
+const assetModule = assets.length === 0 && config.assets === false ? null : writeAssetModule(meta, assets);
 const windowPages = [];
 for (const spec of meta.windows) {
   windowPages.push({ spec, html: await renderWindow(spec, minify) });
 }
 if (flag("assets")) {
-  console.log(path.relative(root, assetModule));
+  if (assetModule) console.log(path.relative(root, assetModule));
   process.exit(0);
 }
 
@@ -607,6 +736,12 @@ for (const page of windowPages) {
   files.push(fileRecord(`windows/${page.spec.id}.html`, data));
 }
 
+const packaged = new Set(files.map((item) => item.path));
+for (const window of meta.windows) {
+  if (window.icon && !packaged.has(window.icon)) {
+    throw new Error(`窗口 ${window.id} 的 icon ${window.icon} 不在 public/ 中`);
+  }
+}
 const manifestText = buildManifest(meta, hasCli ? "plugin.js" : "", files);
 writeFileSync(manifestPath, manifestText);
 

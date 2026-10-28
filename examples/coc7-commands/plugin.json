@@ -1,0 +1,15 @@
+{
+  "name": "coc7-commands",
+  "displayName": "COC 7th 指令集",
+  "version": "1.0.0",
+  "description": "COC7 技能/理智/成长/症状/属性指令集，依赖 coc7 规则声明插件。",
+  "author": "NarraTable",
+  "pluginRule": {
+    "rule": "narratable/coc7",
+    "constraint": ">= 0.3.0 < 1.0.0",
+    "namespace": "coc7"
+  },
+  "depends": [
+    { "id": "narratable/coc7", "constraint": ">= 0.3.0 < 1.0.0" }
+  ]
+}

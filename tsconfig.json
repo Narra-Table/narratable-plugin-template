@@ -6,5 +6,12 @@
     "module": "ESNext",
     "moduleResolution": "bundler"
   },
-  "include": ["ntp.d.ts", "src/**/*.ts"]
+  "include": [
+    "ntp.d.ts",
+    "src/**/*.ts",
+    "examples/**/*.ts"
+  ],
+  "exclude": [
+    "examples/**/ntp.d.ts"
+  ]
 }

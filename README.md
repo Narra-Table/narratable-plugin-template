@@ -2,7 +2,7 @@
 
 故桌插件的 TypeScript 工程。终端入口写指令，窗口入口写页面。构建产出脚本、窗口页面和资源清单，并可以打成 `.ntp` 包。
 
-宿主提供全局对象 `narratable`。类型在 `ntp.d.ts`，命名空间是 `ntp`。副作用都通过 `cpi` 完成，例如 `replyMessage`、`sendToast`、`roll`、`getRoleAbilityList`。
+宿主提供全局对象 `narratable`。类型在 `ntp.d.ts`，命名空间是 `ntp`。副作用都通过 `cpi` 完成，例如 `replyMessage`、`sendToast`、`roll`；配置用 `narratable.config`，角色接口用 `narratable.character`。
 
 ## 目录
 
@@ -17,6 +17,7 @@
 | `src/assets.ts` | 构建生成的资源引用，`image()` / `audio()` |
 | `src/commands/` | 每条指令一个文件 |
 | `build.mjs` | 构建脚本、清单，并在 `release` 时打包 |
+| `examples/` | 示例插件项目，每个目录独立 `plugin.json` 和 TypeScript `src/` |
 | `dist/` | 构建产物，不入库 |
 
 `defineCommand` 把 `CommandExecutor` 的位置参数收成具名字段。`sender` 取点名列表的最后一项，也就是发送者自己的面具。
@@ -60,7 +61,7 @@ narratable.rule.register(rule);
 
 ## 元信息与资源
 
-`plugin.json` 写身份和窗口。`name` 是小写字母、数字和连字符。`version` 是 `主版本.次版本.修订号`，可以带连字符后缀。`characterDataType` 和 `depends` 可以省略。配置槽和插件之间的调用还没有进模板，约定见仓库里的 `backend/docs/features/plugin-package.md`。
+`plugin.json` 写身份、规则、依赖和窗口。`name` 是小写字母、数字和连字符。`version` 是 `主版本.次版本.修订号`，可以带连字符后缀。`characterDataType`、`rule`、`pluginRule`、`depends` 都可以省略。`configSchema` 已废弃，写了会让构建失败；配置项改在脚本顶层用 `narratable.config.*` 登记。
 
 ```json
 {
@@ -75,7 +76,97 @@ narratable.rule.register(rule);
 }
 ```
 
-`windows` 可以省略。写了的话，每一项有 `id` 和 `title`。`id` 对应目录 `src/windows/<id>/`。可选的 `visibility` 是 `all` 或 `gm_only`。
+`windows` 可以省略。写了的话，每一项必须有 `id` 和 `title`。`id` 对应目录 `src/windows/<id>/`。可选的窗口字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `icon` | `assets/` 下的图片；缺省用应用图标 |
+| `visibility` | `all` 或 `gm_only` |
+| `defaultWidth` | 0 到 1 之间的初始宽度 |
+| `defaultDisplay` | `normal` / `maximized` / `minimized` / `floating` |
+| `chrome` | `full` / `titlebar-hidden` |
+| `floating` `modal` `singleton` | 默认 `false` |
+| `embeddable` `launcher` `resizable` `dismissible` | 默认 `true` |
+
+## 规则与依赖
+
+声明规则的插件用 `rule`，版本号就是规则版本。每个 rule 只有一个声明插件。
+
+```json
+{
+  "name": "coc7",
+  "version": "1.4.2",
+  "rule": { "id": "narratable/coc7", "name": "COC 7th" }
+}
+```
+
+依赖某条规则的插件用 `pluginRule`，并在 `depends` 里显式依赖声明插件；宿主不会自动补依赖。
+
+```json
+{
+  "pluginRule": {
+    "rule": "narratable/coc7",
+    "constraint": ">= 1.0.0 < 2.0.0",
+    "namespace": "coc7"
+  },
+  "depends": [
+    { "id": "narratable/coc7", "constraint": ">= 1.0.0 < 2.0.0" }
+  ]
+}
+```
+
+`depends` 也接受旧字符串数组，构建时会统一输出 `{ id }` 对象。没有 `pluginRule` 的插件是公共插件，可在任何空间启用。
+
+## 配置
+
+配置项在脚本顶层登记，宿主试加载时收集，不进 `plugin.json`。普通值和 `Selector<T>` 用同一套 API。
+
+```ts
+narratable.config.int("diceFaces", 100, "个人骰面", "规则", { scope: "user" });
+narratable.config.selector("dice", {
+  valueType: "int",
+  scope: "user",
+  default: "workspace",
+  options: [
+    { id: "workspace", name: "跟随工作区", source: { scope: "workspace", key: "defaultDice" } },
+    { id: "user", name: "个人骰面", source: { scope: "user", key: "diceFaces" } },
+  ],
+});
+
+const faces = narratable.config.get<number>("dice");
+const option = narratable.config.select("dice");
+const raw = narratable.config.in("workspace").raw("defaultDice");
+```
+
+作用域是 `global`、`user`、`workspace`。Selector 只能读同层或更宽的槽：个人选择器可以跟随工作区值，工作区共享值不能读个人槽。
+
+## 角色接口
+
+规则声明插件可以实现 character 接口。宿主保存卡片元数据和不透明 payload，表单由 `describe` 驱动。
+
+```ts
+narratable.character.define({
+  describe() {
+    return {
+      ruleId: "narratable/coc7",
+      name: "COC 7th",
+      fields: [
+        { key: "hp", label: "生命", type: "number", default: 10 },
+        { key: "san", label: "理智", type: "number", default: 50 },
+      ],
+    };
+  },
+  read(cardId) {
+    return {};
+  },
+  write(cardId, data, patch) {
+    return data;
+  },
+  validate(cardId, data) {
+    return [];
+  },
+});
+```
 
 资源放在 `public/`。`public/icon.svg` 打进包后是 `assets/icon.svg`。允许的类型是 png、jpg、jpeg、gif、webp、svg、json、ogg、mp3、wav。单个文件不超过 8MB，合计不超过 32MB，最多 200 个。以点开头的文件会被跳过，符号链接会让构建失败。
 
@@ -107,7 +198,30 @@ src/windows/sheet/index.tsx
 
 只有窗口、没有指令和导出时，删掉 `src/main.ts`。包里就没有 `plugin.js`。只有终端时，不要写 `windows`。
 
-构建后每个窗口是一份自包含的 `dist/windows/<id>.html`。当前宿主还不会把这个文件装进工作台。
+构建后每个窗口是一份自包含的 `dist/windows/<id>.html`。宿主会把这个文件装进 sandbox iframe，资源走 `plugin:<name>/assets/...`。窗口桥和键盘转发仍在实现中。
+
+## 示例插件
+
+`examples/` 下有两个 COC7 插件，可以作为规则声明插件和依赖插件的参考：
+
+| 目录 | 内容 |
+| --- | --- |
+| `examples/coc7-rules` | 声明 `narratable/coc7`、角色卡字段和配置，没有指令 |
+| `examples/coc7-commands` | `pluginRule` + `depends`，提供 `.rc`/`.sc`/`.st` 等指令 |
+
+构建两个示例：
+
+```sh
+npm run examples
+```
+
+产物在 `examples/<name>/dist/`。单独构建用 `--root`：
+
+```sh
+node ./build.mjs --root examples/coc7-commands --release
+```
+
+示例用 TypeScript 写在 `src/`，由 esbuild 打包；规则插件按 descriptor/character/config 拆文件，指令插件按 `src/commands/*.ts` 一条指令一个文件。指令插件构建时会从 `examples/coc7-rules/src/descriptor.ts` 导入字段标签和分组，避免两份技能表。
 
 ## 检查与构建
 
@@ -118,7 +232,7 @@ pnpm build
 pnpm release
 ```
 
-`pnpm check` 会先刷新 `src/assets.ts`，确认窗口入口存在，再做类型检查。`pnpm build` 在有 `src/main.ts` 时用 esbuild 打出脚本，把每个窗口打成 `dist/windows/<id>.html`，把 `public/` 复制到 `dist/assets/`，并写 `dist/manifest.json`。清单里的 `format`、`entry`、`windows` 和 `files`（路径、字节数、sha256）由构建填写。没有终端入口时，清单不含 `entry`。`pnpm release` 会先做同样的构建，再把清单、脚本、窗口和资源打成 `dist/{name}-{version}.ntp`。`.ntp` 是这个固定布局的 zip。
+`pnpm check` 会先刷新根项目的 `src/assets.ts`，确认窗口入口存在，再对根项目和 `examples/` 里的 TypeScript 做类型检查。`pnpm build` 在有 `src/main.ts` 时用 esbuild 打出脚本，把每个窗口打成 `dist/windows/<id>.html`，把 `public/` 复制到 `dist/assets/`，并写 `dist/manifest.json`。清单里的 `format`、`entry`、`windows` 和 `files`（路径、字节数、sha256）由构建填写。没有终端入口时，清单不含 `entry`。`pnpm release` 会先做同样的构建，再把清单、脚本、窗口和资源打成 `dist/{name}-{version}.ntp`。`.ntp` 是这个固定布局的 zip。
 
 当前管理页仍安装 `dist/plugin.js`。`.ntp` 是给后续宿主安装用的包。
 
