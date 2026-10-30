@@ -35,7 +35,8 @@ function autoDerive(): boolean {
 
 /** Recalculate derived characteristics from the eight base attributes. */
 export function derive(data: ntp.CharacterData | undefined): ntp.CharacterData {
-  const sheet = merge(asSheet(DEFAULTS), asSheet(data));
+  const supplied = asSheet(data);
+  const sheet = merge(asSheet(DEFAULTS), supplied);
   const strength = numberOr(sheet, "strength", 0);
   const dexterity = numberOr(sheet, "dexterity", 0);
   const willpower = numberOr(sheet, "willpower", 0);
@@ -43,17 +44,19 @@ export function derive(data: ntp.CharacterData | undefined): ntp.CharacterData {
   const education = numberOr(sheet, "education", 0);
   const size = numberOr(sheet, "size", 0);
 
-  sheet.healthPoints = Math.floor((constitution + size) / 10);
-  sheet.magicPoints = Math.floor(willpower / 5);
-  sheet.sanity = Math.min(99, willpower);
+  // Current resources and trained skills survive reads and unrelated writes.
+  // Only a new/missing field receives its initial value.
+  sheet.healthPoints = numberOr(supplied, "healthPoints", Math.floor((constitution + size) / 10));
+  sheet.magicPoints = numberOr(supplied, "magicPoints", Math.floor(willpower / 5));
+  sheet.sanity = numberOr(supplied, "sanity", Math.min(99, willpower));
   sheet.luck = numberOr(sheet, "luck", 50);
   sheet.mov = dexterity < size && strength < size ? 7 : strength >= size && dexterity >= size ? 9 : 8;
 
   const total = strength + size;
   sheet.build = total < 65 ? -2 : total < 85 ? -1 : total < 125 ? 0 : total < 165 ? 1 : total < 205 ? 2 : 3;
   sheet.damageBonus = total < 65 ? "-2" : total < 85 ? "-1" : total < 125 ? "0" : total < 165 ? "+1d4" : total < 205 ? "+1d6" : "+2d6";
-  sheet.dodge = Math.floor(dexterity / 2);
-  sheet.motherTongue = education;
+  sheet.dodge = numberOr(supplied, "dodge", Math.floor(dexterity / 2));
+  sheet.motherTongue = numberOr(supplied, "motherTongue", education);
   return sheet;
 }
 
@@ -72,14 +75,13 @@ export function defineCharacter(): void {
     describe() {
       return DESCRIPTOR;
     },
-    read(_cardId, stored) {
-      return derive(stored);
+    read(stored) {
+      return autoDerive() ? derive(stored) : merge(asSheet(DEFAULTS), asSheet(stored));
     },
-    write(_cardId, data) {
-      const next = merge(asSheet(DEFAULTS), asSheet(data));
-      return autoDerive() ? derive(next) : next;
+    write(data) {
+      return autoDerive() ? derive(data) : merge(asSheet(DEFAULTS), asSheet(data));
     },
-    validate(_cardId, data) {
+    validate(data) {
       const sheet = asSheet(data);
       const errors: ntp.CharacterValidationError[] = [];
       const labels = Object.fromEntries(DESCRIPTOR.fields.map((field) => [field.key, field.label]));
@@ -96,12 +98,17 @@ export function defineCharacter(): void {
         }
       }
 
-      const derived = ["healthPoints", "magicPoints", "sanity", "luck", "mov", "build"];
+      const derived = ["healthPoints", "magicPoints", "sanity", "luck", "mov"];
       for (const key of derived) {
         const value = numeric(sheet[key]);
         if (value !== undefined && value < 0) {
           errors.push({ field: key, code: "out_of_range", message: `${labels[key]}不能为负数` });
         }
+      }
+
+      const build = numeric(sheet.build);
+      if (build === undefined || build < -2) {
+        errors.push({ field: "build", code: "out_of_range", message: "体格不能小于 -2" });
       }
 
       for (const field of DESCRIPTOR.fields) {

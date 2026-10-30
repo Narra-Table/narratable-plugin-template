@@ -1,4 +1,4 @@
-import { fieldValue, loadCard, setFieldValue, toNumber } from "../card";
+import { saveCard, fieldValue, loadCard, setFieldValue, toNumber } from "../card";
 import { criticalFailure, criticalSuccess, houseRule, rollD100 } from "../dice";
 import { parseLoss } from "../parse";
 import { reply } from "../reply";
@@ -70,7 +70,7 @@ export function registerSanityCommands(rule: ntp.RuleNamespace): void {
 
       const nextSan = Math.max(0, currentSan - loss);
       setFieldValue(loaded.card, "sanity", nextSan);
-      cpi.setRoleAbilityList(loaded.who.maskId, loaded.card);
+      saveCard(cpi, loaded);
       cpi.setCopywritingKey(`理智检定_${level}`);
 
       let text = `理智检定：D100=${roll}/${currentSan} ${level}`

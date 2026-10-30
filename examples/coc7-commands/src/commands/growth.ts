@@ -1,4 +1,4 @@
-import { fieldValue, loadCard, setFieldValue, toNumber } from "../card";
+import { saveCard, fieldValue, loadCard, setFieldValue, toNumber } from "../card";
 import { criticalFailure, houseRule, rollD100 } from "../dice";
 import { LABELS } from "../data";
 import { parseCheck } from "../parse";
@@ -41,7 +41,7 @@ export function registerGrowthCommand(rule: ntp.RuleNamespace): void {
         const improve = cpi.roll("1d10").total;
         const next = value + improve;
         setFieldValue(loaded.card, parsed.name, next);
-        cpi.setRoleAbilityList(loaded.who.maskId, loaded.card);
+        saveCard(cpi, loaded);
         text += `\n${display}成长：${value} -> ${next}`;
         cpi.setCopywritingKey("成长");
       }

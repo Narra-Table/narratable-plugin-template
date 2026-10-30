@@ -1,4 +1,4 @@
-import { fieldValue, loadCard, normalizeName, setFieldValue, showCard, toNumber } from "../card";
+import { saveCard, fieldValue, loadCard, normalizeName, setFieldValue, showCard, toNumber } from "../card";
 import { LABELS } from "../data";
 import { defineCommand } from "../command";
 
@@ -38,7 +38,7 @@ export function registerStatsCommand(rule: ntp.RuleNamespace): void {
         cpi.replyMessage("没有识别到属性修改，用法如 .st 侦查60 或 .st 力量+10");
         return false;
       }
-      cpi.setRoleAbilityList(loaded.who.maskId, loaded.card);
+      saveCard(cpi, loaded);
       cpi.replyMessage(`属性设置成功：<${loaded.who.name || "当前角色"}>\n${changes.join("\n")}`);
       return true;
     },

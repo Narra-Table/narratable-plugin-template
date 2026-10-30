@@ -1,11 +1,10 @@
-import { ALIASES, FALLBACK_KEYS, LABELS, SECTIONS, type Section } from "./data";
+import { ALIASES, FALLBACK_KEYS, LABELS } from "./data";
 
 export interface LoadedCard {
   who: ntp.MentionedMask;
-  card: ntp.RoleAbility;
+  card: ntp.CharacterData;
 }
 
-const SECTIONS_ORDER: Section[] = ["basic", "ability", "skill", "extra", "act", "record"];
 
 export function sender(mentioned: readonly ntp.MentionedMask[]): ntp.MentionedMask | undefined {
   return mentioned[mentioned.length - 1];
@@ -17,8 +16,8 @@ export function target(mentioned: readonly ntp.MentionedMask[]): ntp.MentionedMa
 
 export function loadCard(cpi: ntp.CPI, mentioned: readonly ntp.MentionedMask[]): LoadedCard | null {
   const who = target(mentioned);
-  if (!who) return null;
-  return { who, card: cpi.getRoleAbilityList(who.maskId) };
+  if (!who?.cardId) return null;
+  return { who, card: cpi.character.read(who.cardId) };
 }
 
 export function normalizeName(raw: string): string {
@@ -40,41 +39,20 @@ function candidateKeys(key: string): string[] {
   return [key, ...(FALLBACK_KEYS[key] ?? [])];
 }
 
-interface LocatedField {
-  section: Section;
-  key: string;
-  value: string;
+export function fieldValue(card: ntp.CharacterData, key: string): unknown {
+  for (const candidate of candidateKeys(key)) {
+    if (card[candidate] !== undefined) return card[candidate];
+  }
+  return undefined;
 }
 
-function locateField(card: ntp.RoleAbility, key: string): LocatedField | null {
-  for (const section of SECTIONS_ORDER) {
-    const table = card[section] as Record<string, string> | undefined;
-    if (!table) continue;
-    for (const candidate of candidateKeys(key)) {
-      const value = table[candidate];
-      if (value !== undefined && value !== null) {
-        return { section, key: candidate, value };
-      }
-    }
-  }
-  return null;
+export function setFieldValue(card: ntp.CharacterData, key: string, value: string | number): void {
+  card[key] = value;
 }
 
-export function fieldValue(card: ntp.RoleAbility, key: string): string | undefined {
-  return locateField(card, key)?.value;
-}
-
-export function setFieldValue(card: ntp.RoleAbility, key: string, value: string | number): void {
-  const located = locateField(card, key);
-  if (located) {
-    card[located.section][located.key] = String(value);
-    return;
-  }
-  const section = SECTIONS[key] ?? "skill";
-  if (!card[section]) {
-    (card as unknown as Record<string, Record<string, string>>)[section] = {};
-  }
-  card[section][key] = String(value);
+export function saveCard(cpi: ntp.CPI, loaded: LoadedCard): void {
+  if (!loaded.who.cardId) throw new Error("角色没有绑定规则卡");
+  cpi.character.write(loaded.who.cardId, loaded.card);
 }
 
 export function showCard(cpi: ntp.CPI, mentioned: readonly ntp.MentionedMask[], names: string[]): boolean {

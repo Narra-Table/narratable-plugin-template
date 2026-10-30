@@ -3,7 +3,7 @@
 
 export const RULE_ID = "narratable/coc7";
 // Keep in sync with plugin.json and examples/coc7-commands/plugin.json constraints.
-export const RULE_VERSION = "0.3.0";
+export const RULE_VERSION = "0.4.0";
 export const RULE_NAME = "COC 7th";
 
 export const GROUPS: ntp.CharacterGroup[] = [
@@ -190,7 +190,7 @@ export const DESCRIPTOR: ntp.CharacterDescriptor = {
   ruleId: RULE_ID,
   ruleVersion: RULE_VERSION,
   name: RULE_NAME,
-  description: "克苏鲁的呼唤第七版。八项基础属性、衍生属性与完整技能表；衍生值在写入时重算。",
+  description: "克苏鲁的呼唤第七版。八项基础属性、衍生属性与完整技能表；保留当前资源和成长技能，只初始化缺失值。",
   groups: GROUPS,
   fields: FIELDS,
   defaults: DEFAULTS,

@@ -1,9 +1,12 @@
 {
   "name": "coc7-rules",
   "displayName": "COC 7th 规则与角色卡",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "克苏鲁的呼唤第七版：规则声明、角色卡字段与默认配置。",
   "author": "NarraTable",
-  "rule": { "id": "narratable/coc7", "name": "COC 7th" },
+  "rule": {
+    "id": "narratable/coc7",
+    "name": "COC 7th"
+  },
   "characterDataType": "coc7th"
 }
