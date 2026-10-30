@@ -1,0 +1,7 @@
+{
+  "name": "close-report",
+  "displayName": "结团报告",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "通过宿主只读数据生成遵守可见性的结团报告。"
+}

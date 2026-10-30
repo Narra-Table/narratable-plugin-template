@@ -1,0 +1,17 @@
+{
+  "name": "initiative",
+  "displayName": "先攻",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "指令与窗口共享房间先攻表。",
+  "windows": [
+    {
+      "id": "board",
+      "title": "先攻",
+      "visibility": "all",
+      "defaultWidth": 0.333,
+      "embeddable": true,
+      "launcher": true
+    }
+  ]
+}

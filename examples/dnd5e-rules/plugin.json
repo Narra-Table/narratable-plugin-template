@@ -1,0 +1,12 @@
+{
+  "name": "dnd5e-rules",
+  "displayName": "DND 5E",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "DND 5E 规则卡与属性修正值。",
+  "rule": {
+    "id": "narratable/dnd5e",
+    "name": "DND 5E"
+  },
+  "characterDataType": "dnd5e"
+}

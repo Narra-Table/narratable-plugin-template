@@ -1,0 +1,10 @@
+{
+  "name": "coc7-sheet-plugin",
+  "private": true,
+  "narratablePlugin": {
+    "entry": "src/main.ts",
+    "outfile": "dist/plugin.js",
+    "minify": false,
+    "assets": false
+  }
+}

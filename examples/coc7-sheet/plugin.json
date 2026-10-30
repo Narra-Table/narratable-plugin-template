@@ -1,0 +1,28 @@
+{
+  "name": "coc7-sheet",
+  "displayName": "COC 角色卡",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "按规则描述符编辑调查员卡，订阅角色更新。",
+  "pluginRule": {
+    "rule": "narratable/coc7",
+    "constraint": ">=0.4.0 <1.0.0",
+    "namespace": "coc7"
+  },
+  "depends": [
+    {
+      "id": "narratable/coc7",
+      "constraint": ">=0.4.0 <1.0.0"
+    }
+  ],
+  "windows": [
+    {
+      "id": "sheet",
+      "title": "调查员卡",
+      "visibility": "all",
+      "defaultWidth": 0.5,
+      "embeddable": true,
+      "launcher": true
+    }
+  ]
+}

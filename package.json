@@ -6,7 +6,8 @@
     "check": "node ./build.mjs --assets && tsc --noEmit",
     "build": "node ./build.mjs",
     "release": "node ./build.mjs --release",
-    "examples": "node ./build.mjs --root examples/coc7-rules --release && node ./build.mjs --root examples/coc7-commands --release"
+    "examples": "node ./build.mjs --root examples/coc7-rules --release && node ./build.mjs --root examples/coc7-commands --release",
+    "official": "node scripts/build-official.mjs"
   },
   "narratablePlugin": {
     "entry": "src/main.ts",

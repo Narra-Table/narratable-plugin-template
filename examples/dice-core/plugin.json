@@ -1,0 +1,7 @@
+{
+  "name": "dice-core",
+  "displayName": "基础骰子",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "基础掷骰、暗骰、帮助与默认骰面配置。"
+}

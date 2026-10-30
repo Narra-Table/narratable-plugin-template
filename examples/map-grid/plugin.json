@@ -1,0 +1,17 @@
+{
+  "name": "map-grid",
+  "displayName": "地图",
+  "version": "0.1.1",
+  "author": "NarraTable",
+  "description": "共享格子地图，支持鼠标与触屏移动标记。",
+  "windows": [
+    {
+      "id": "grid",
+      "title": "地图",
+      "visibility": "all",
+      "defaultWidth": 0.5,
+      "embeddable": true,
+      "launcher": true
+    }
+  ]
+}
