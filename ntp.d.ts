@@ -11,6 +11,8 @@ declare namespace ntp {
     userId: string;
     maskId: string;
     name: string;
+    /** First rule card on this mask, if one exists. */
+    cardId?: string;
   }
 
   export interface CommandInfo {
@@ -22,6 +24,9 @@ declare namespace ntp {
   }
 
   export interface SpaceInfo {
+    userId: string;
+    role: "gm" | "agm" | "pl" | "ob";
+    isOwner: boolean;
     spaceId: string;
     roomId: string;
     name: string;
@@ -155,6 +160,24 @@ declare namespace ntp {
     getSpaceData(key: string): string | undefined;
     setSpaceData(key: string, value: string | null): void;
     setCopywritingKey(key: string | null): void;
+    character: {
+      read(cardId: string): CharacterData;
+      write(cardId: string, data: CharacterData): CharacterData;
+    };
+    data: {
+      get(key: string, options?: { room?: boolean }): unknown;
+      set(key: string, value: unknown, options?: { room?: boolean; visibility?: "all" | "gm_only" }): void;
+      list(prefix: string, options?: { room?: boolean }): string[];
+      delete(key: string, options?: { room?: boolean }): void;
+    };
+    openWindow(windowId: string, params?: unknown): void;
+    /** 结团报告可读数据：成员、角色卡、骰点账本、线索。非 GM 只看到自己能看见的部分。 */
+    reportData(): {
+      members: { userId: string; role: string; displayName: string }[];
+      cards: { id: string; maskId: string; name: string; data: unknown }[];
+      rolls: { messageId: string; roomId: string; raw: string; visibility: string; result: string }[];
+      clues: { messageId: string; roomId: string; title: string; tags: string[]; visibility: string }[];
+    };
     registerCommand(
       name: string,
       info?: Pick<CommandInfo, "description" | "usage" | "alias" | "examples">,
@@ -318,30 +341,74 @@ declare namespace ntp {
   }
 
   export interface CharacterDefinition {
-    describe(cardId?: string): CharacterDescriptor;
+    describe(): CharacterDescriptor;
     /** stored is the raw payload the host saved; rules may fill defaults and derive. */
-    read?(cardId: string, stored?: CharacterData): CharacterData;
-    write?(cardId: string, data: CharacterData, patch?: boolean): CharacterData;
-    validate?(cardId: string, data: CharacterData): CharacterValidationError[];
+    read?(stored: CharacterData): CharacterData;
+    write?(data: CharacterData): CharacterData;
+    validate?(data: CharacterData): CharacterValidationError[];
   }
 
   export interface CharacterAPI {
     define(definition: CharacterDefinition): void;
-    describe(cardId?: string): CharacterDescriptor;
-    read(cardId: string): CharacterData;
-    write(cardId: string, data: CharacterData, patch?: boolean): CharacterData;
-    validate(cardId: string, data: CharacterData): CharacterValidationError[];
   }
 
   export interface Narratable {
     CommandExecutor: typeof CommandExecutor;
     config: ConfigAPI;
     character: CharacterAPI;
+    /** Register a function other plugins call through use(). */
+    export(name: string, fn: (args: unknown[], cpi: CPI) => unknown): void;
+    /**
+     * Call another active plugin's exports in this same invocation.
+     * The stack is at most 8 frames and shares the command timeout.
+     */
+    use(pluginName: string): Record<string, (...args: unknown[]) => unknown>;
     rule: {
       new: (name: string, alias: string[], description: string) => RuleNamespace;
       register(namespace: RuleNamespace): void;
     };
   }
+  /** The host injects ntpWindow into each sandboxed iframe before plugin code. */
+  export type WindowMethod =
+    | "hello" | "subscribe" | "resource.url" | "invoke"
+    | "config.get" | "config.select" | "config.describe" | "config.raw" | "config.set"
+    | "character.describe" | "character.list" | "character.read" | "character.write"
+    | "data.get" | "data.list"
+    | "window.open" | "window.close" | "window.closeDecision"
+    | "window.getState" | "window.setState" | "window.setTitle" | "window.setIcon"
+    | "window.setAttention" | "window.postMessage" | "window.broadcast" | "keyboard";
+
+  export type WindowEvent =
+    | "visibility" | "beforeClose" | "theme" | "window.message"
+    | "config.updated" | "appdata.updated" | "character.updated" | "message.created";
+
+  export interface WindowInit {
+    spaceId: string;
+    roomId?: string;
+    instanceId: string;
+    user: { userId: string; displayName: string; role: "gm" | "agm" | "pl" | "ob"; isOwner: boolean };
+    rule?: { ruleId?: string; ruleName?: string; version?: string; pluginId?: string };
+    archived: boolean;
+    params?: unknown;
+    /** Per-instance view state. Null on first open; separate from launch params. */
+    state: unknown | null;
+    theme: Record<string, string>;
+  }
+
+  export type WindowBridgeMessage =
+    | { ntp: 1; kind: "request"; id: string; method: WindowMethod; params?: unknown }
+    | { ntp: 1; kind: "response"; id: string; ok: true; result: unknown }
+    | { ntp: 1; kind: "response"; id: string; ok: false; error: { code: string; message: string } }
+    | { ntp: 1; kind: "event"; event: WindowEvent; payload: unknown };
+
+  export interface WindowBridge {
+    ready: Promise<WindowInit>;
+    /** JSON envelopes <=32KB, at most 32 outstanding requests. */
+    request<T = unknown>(method: WindowMethod, params?: unknown): Promise<T>;
+    on(event: WindowEvent, callback: (payload: unknown) => void): () => void;
+  }
+
 }
 
+declare const ntpWindow: ntp.WindowBridge;
 declare const narratable: ntp.Narratable;
